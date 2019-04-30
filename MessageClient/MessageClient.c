@@ -6,6 +6,8 @@
 
 #define MAX_MESSAGE_SIZE 255
 
+TCHAR* clientName;
+
 DWORD sendData(CM_CLIENT* client, CM_DATA_BUFFER* dataToSend, TCHAR* messageToSend)
 {
 	SIZE_T messageToSendSize = _tcslen(messageToSend);
@@ -36,6 +38,7 @@ DWORD receiveData(CM_CLIENT* client, CM_DATA_BUFFER* dataToReceive, TCHAR* buffe
 {
 	CM_SIZE receivedByteCount;
 	CM_ERROR error;
+	char* aux = malloc(MAX_MESSAGE_SIZE);
 
 	error = ReceiveDataFormServer(client, dataToReceive, &receivedByteCount);
 	if (CM_IS_ERROR(error))
@@ -44,7 +47,8 @@ DWORD receiveData(CM_CLIENT* client, CM_DATA_BUFFER* dataToReceive, TCHAR* buffe
 		return ERROR_ERRORS_ENCOUNTERED;
 	}
 
-	_tcscpy(bufferedMessage, (TCHAR*)dataToReceive->DataBuffer);
+	strcpy(aux, (char*)dataToReceive->DataBuffer);
+	mbstowcs(bufferedMessage, aux, MAX_MESSAGE_SIZE);
 	return ERROR_SUCCESS;
 }
 
@@ -60,7 +64,7 @@ DWORD initDataBuffer(CM_DATA_BUFFER** buffer, CM_SIZE size)
 	return ERROR_SUCCESS;
 }
 
-TCHAR** splitMessage(TCHAR* message, int* numberOfWords)
+TCHAR** splitMessage(TCHAR* message, DWORD* numberOfWords)
 {
 	TCHAR** result = (TCHAR * *)malloc(MAX_MESSAGE_SIZE * sizeof(TCHAR*));
 	for (int i = 0; i < MAX_MESSAGE_SIZE; i++)
@@ -80,6 +84,74 @@ TCHAR** splitMessage(TCHAR* message, int* numberOfWords)
 	}
 
 	return result;
+}
+
+DWORD cleanDataBuffer(CM_DATA_BUFFER** buffer)
+{
+	/*strcpy((char*)(*buffer)->DataBuffer, "");
+	(*buffer)->UsedBufferSize = 0;*/
+
+	CopyDataIntoBuffer(*buffer, (CM_BYTE*)"", sizeof(""));
+
+	return ERROR_SUCCESS;
+}
+
+DWORD WINAPI ClientListener(PVOID param)
+{
+	CM_CLIENT* client = (CM_CLIENT*)param;
+
+	TCHAR* message = (TCHAR*)malloc(MAX_MESSAGE_SIZE * sizeof(TCHAR));
+
+	CM_DATA_BUFFER* dataToReceive = NULL;
+
+	while (TRUE)
+	{
+
+		if (initDataBuffer(&dataToReceive, MAX_MESSAGE_SIZE) != ERROR_SUCCESS)
+		{
+			return (DWORD)-1;
+		}
+
+		if (receiveData(client, dataToReceive, message) != ERROR_SUCCESS)
+		{
+			DestroyDataBuffer(dataToReceive);
+			return (DWORD)-1;
+		}
+		DestroyDataBuffer(dataToReceive);
+
+		DWORD numberOfWords = 0;
+		TCHAR** messageArray = splitMessage(message,&numberOfWords);
+
+		if (_tcscmp(messageArray[0], TEXT("exit")) == 0)
+		{
+			DestroyClient(client);
+			UninitCommunicationModule();
+			free(clientName);
+			free(message);
+
+			_tprintf_s(TEXT("Client shut down!\n"));
+			system("pause");
+		}
+
+		else if(_tcscmp(messageArray[0],TEXT("msg")) == 0)
+		{
+			TCHAR* msg = (TCHAR*)malloc(MAX_MESSAGE_SIZE * sizeof(TCHAR));
+			_tcscpy(msg, TEXT(""));
+			for (int i = 1; i < (int)numberOfWords; i++)
+			{
+				_tcscat(msg, messageArray[i]);
+				_tcscat(msg, TEXT(" "));
+			}
+			_tprintf_s(TEXT("Message received: %s\n"), msg);
+			free(msg);
+		}
+
+		else
+		{
+			_tprintf_s(TEXT("Response from server received but it's unknown command!\n"));
+		}
+
+	}
 }
 
 int _tmain(int argc, TCHAR* argv[])
@@ -107,52 +179,82 @@ int _tmain(int argc, TCHAR* argv[])
 
 	_tprintf_s(TEXT("We are connected to the server...\n"));
 
+	//Create listener thread
+	CreateThread(NULL, 0, ClientListener, (PVOID)client, 0, NULL);
+
 	TCHAR* message = (TCHAR*)malloc(MAX_MESSAGE_SIZE * sizeof(TCHAR));
+
+	CM_DATA_BUFFER* dataToSend = NULL;
+
+	clientName = (TCHAR*)malloc(50 * sizeof(TCHAR));
+	_tcscpy(clientName, TEXT("UNNAMED"));
+	_tprintf_s(TEXT("Connected client: %s\n"), clientName);
 
 	while (TRUE)
 	{
-		_tprintf_s(TEXT("Enter text: "));
+		//_tprintf_s(TEXT("Enter command: "));
 		_getts_s(message, MAX_MESSAGE_SIZE);
 
-		CM_DATA_BUFFER* dataToSend = NULL;
+		DWORD numberOfWords = 0;
+		TCHAR** messageArray = splitMessage(message,&numberOfWords);
+
 		if (initDataBuffer(&dataToSend, MAX_MESSAGE_SIZE) != ERROR_SUCCESS)
 		{
 			return -1;
 		}
 
-		if (sendData(client, dataToSend, message) != ERROR_SUCCESS)
-		{
-			break;
-		}
-
-		int numberOfWords = 0;
-		TCHAR** messageArray = splitMessage(message,&numberOfWords);
-
 		if (_tcscmp(messageArray[0], TEXT("exit")) == 0)
 		{
+			if (sendData(client, dataToSend, message) != ERROR_SUCCESS)
+			{
+				break;
+			}
+			DestroyDataBuffer(dataToSend);
+			dataToSend = NULL;
+
 			free(message);
 			for (int i = 0; i < MAX_MESSAGE_SIZE; i++)
 			{
 				free(messageArray[i]);
 			}
 			free(messageArray);
-			DestroyDataBuffer(dataToSend);
 			dataToSend = NULL;
 			break;
 		}
 
+		else if (_tcscmp(messageArray[0], TEXT("echo")) == 0)
+		{
+			for (int i = 1; i < (int)numberOfWords; i++)
+			{
+				_tcscat(message, TEXT(" "));
+				_tcscat(message, messageArray[i]);
+			}
+			if (sendData(client, dataToSend, message) != ERROR_SUCCESS)
+			{
+				break;
+			}
+		}
+
+		else if (_tcscmp(messageArray[0], TEXT("msg")) == 0)
+		{
+			for (int i = 1; i < (int)numberOfWords; i++)
+			{
+				_tcscat(message, TEXT(" "));
+				_tcscat(message, messageArray[i]);
+			}
+			if (sendData(client, dataToSend, message) != ERROR_SUCCESS)
+			{
+				break;
+			}
+		}
+		else
+		{
+			_tprintf_s(TEXT("Unknown command! \n"));
+		}
 		DestroyDataBuffer(dataToSend);
-		dataToSend = NULL;
 	}
 
 	_tprintf_s(TEXT("Client is shutting down now...\n"));
-
-	DestroyClient(client);
-	UninitCommunicationModule();
-
-	_tprintf_s(TEXT("Client shut down!\n"));
-	system("pause");
-
 	return 0;
 }
 

@@ -7,11 +7,20 @@
 
 #define MAX_MESSAGE_SIZE 255
 
+typedef struct _CLIENT_DETAIL
+{
+	CM_SERVER_CLIENT* clientHandle;
+	TCHAR* clientName;
+	BOOL isConnected;
+}CLIENT_DETAIL;
+
 THREAD_POOL threadPool;
-
 DWORD connectedClients = 0;
+CLIENT_DETAIL* clients;
 
-DWORD sendData(CM_SERVER_CLIENT* destinationClient, CM_DATA_BUFFER* dataToSend, TCHAR* messageToSend, TCHAR* clientName)
+TCHAR* clientName;
+
+DWORD sendData(CM_SERVER_CLIENT* destinationClient, CM_DATA_BUFFER* dataToSend, TCHAR* messageToSend)
 {
 	CM_ERROR error;
 	CM_SIZE sendByteCount = 0;
@@ -34,12 +43,10 @@ DWORD sendData(CM_SERVER_CLIENT* destinationClient, CM_DATA_BUFFER* dataToSend, 
 		return ERROR_ERRORS_ENCOUNTERED;
 	}
 
-	_tcscpy(clientName, clientName);
-
 	return ERROR_SUCCESS;
 }
 
-DWORD receiveData(CM_SERVER_CLIENT* sourceClient, CM_DATA_BUFFER* dataToReceive, TCHAR* bufferedMessage, TCHAR* clientName)
+DWORD receiveData(CM_SERVER_CLIENT* sourceClient, CM_DATA_BUFFER* dataToReceive, TCHAR* bufferedMessage)
 {
 	CM_ERROR error;
 	CM_SIZE receivedByteCount = 0;
@@ -52,8 +59,6 @@ DWORD receiveData(CM_SERVER_CLIENT* sourceClient, CM_DATA_BUFFER* dataToReceive,
 		return ERROR_ERRORS_ENCOUNTERED;
 	}
 
-	_tcscpy(clientName, clientName);
-	//_tcscpy(bufferedMessage, (TCHAR*)(dataToReceive->DataBuffer));
 	strcpy(aux, (char*)dataToReceive->DataBuffer);
 	mbstowcs(bufferedMessage, aux, MAX_MESSAGE_SIZE);
 
@@ -72,7 +77,17 @@ DWORD initDataBuffer(CM_DATA_BUFFER** buffer, CM_SIZE size)
 	return ERROR_SUCCESS;
 }
 
-TCHAR** splitMessage(TCHAR* message, int* numberOfWords)
+DWORD cleanDataBuffer(CM_DATA_BUFFER** buffer)
+{
+	/*strcpy((char*)(*buffer)->DataBuffer, "");
+	(*buffer)->UsedBufferSize = 0;*/
+
+	CopyDataIntoBuffer(*buffer, (CM_BYTE*)"", sizeof(""));
+
+	return ERROR_SUCCESS;
+}
+
+TCHAR** splitMessage(TCHAR* message, DWORD* numberOfWords)
 {
 	TCHAR** result = (TCHAR**)malloc(MAX_MESSAGE_SIZE * sizeof(TCHAR*));
 	for (int i = 0; i < MAX_MESSAGE_SIZE; i++)
@@ -93,51 +108,163 @@ TCHAR** splitMessage(TCHAR* message, int* numberOfWords)
 	return result;
 }
 
+DWORD initClientsArray()
+{
+	for (int i = 0; i < 10; i++)
+	{
+		clients[i].clientHandle = NULL;
+		clients[i].clientName = (TCHAR*)malloc(50 * sizeof(TCHAR));
+		_tcscpy(clients[i].clientName, TEXT(""));
+		clients[i].isConnected = FALSE;
+	}
+
+	return ERROR_SUCCESS;
+}
+
+DWORD addClient(CLIENT_DETAIL clientDetail)
+{
+	for (int i = 0; i < 10; i++)
+	{
+		if (clients[i].clientHandle == NULL)
+		{
+			clients[i] = clientDetail;
+			return ERROR_SUCCESS;
+		}
+	}
+	return ERROR_ERRORS_ENCOUNTERED;
+}
+
+void getClient(TCHAR* name, CLIENT_DETAIL* client)
+{
+	for (int i = 0; i < 10; i++)
+	{
+		if (_tcscmp(clients[i].clientName, name) == 0)
+		{
+			*client = clients[i];
+			return;
+		}
+	}
+}
+
+DWORD removeClient(TCHAR* name)
+{
+	for (int i = 0; i < 10; i++)
+	{
+		if (_tcscmp(clients[i].clientName, name) == 0)
+		{
+			for (int j = i; j < 10-1; j++)
+			{
+				clients[j] = clients[j + 1];
+			}
+			return ERROR_SUCCESS;
+		}
+	}
+	return ERROR_ERRORS_ENCOUNTERED;
+}
+
 int ClientWorker(PVOID clientParam)
 {
 	connectedClients++;
 
 	CM_SERVER_CLIENT* newClient = (CM_SERVER_CLIENT*)clientParam;
 
+	CLIENT_DETAIL clientDetail;
+	clientDetail.clientHandle = newClient;
+	clientDetail.isConnected = TRUE;
+	clientDetail.clientName = clientName;
+
+	if (addClient(clientDetail) != ERROR_SUCCESS)
+	{
+		_tprintf_s(TEXT("Failed to add client to client array!\n"));
+		return -1;
+	}
+
 	CM_DATA_BUFFER* dataToReceive = NULL;
+	CM_DATA_BUFFER* dataToSend = NULL;
 
 	TCHAR* message = (TCHAR*)malloc(MAX_MESSAGE_SIZE * sizeof(TCHAR));
-	TCHAR* clientName = (TCHAR*)malloc(30 * sizeof(TCHAR));
 
 	while (TRUE)
 	{
 		if (initDataBuffer(&dataToReceive, MAX_MESSAGE_SIZE) != ERROR_SUCCESS)
 		{
 			free(message);
-			free(clientName);
 			return -1;
 		}
 
-		if (receiveData(newClient, dataToReceive, message, clientName) != ERROR_SUCCESS)
+		if (receiveData(newClient, dataToReceive, message) != ERROR_SUCCESS)
 		{
 			free(message);
-			free(clientName);
 			return -1;
 		}
-
 		DestroyDataBuffer(dataToReceive);
 
-		int numberOfWords = 0;
+		DWORD numberOfWords = 0;
 		TCHAR** messageArray = splitMessage(message,&numberOfWords);
 
 		if (_tcscmp(messageArray[0], TEXT("exit")) == 0)
 		{
 			free(message);
-			free(clientName);
 			for (int i = 0; i < MAX_MESSAGE_SIZE; i++)
 			{
 				free(messageArray[i]);
 			}
 			free(messageArray);
+
+			if (initDataBuffer(&dataToSend, MAX_MESSAGE_SIZE) != ERROR_SUCCESS)
+			{
+				free(message);
+				return -1;
+			}
+
+			sendData(newClient, dataToSend, TEXT("exit"));
+			DestroyDataBuffer(dataToSend);
+
+			_tprintf_s(TEXT("Client disconnecting...\n"));
+			Sleep(3000);
 			AbandonClient(newClient);
 			connectedClients--;
 			_tprintf_s(TEXT("Client disconnected!\n"));
 			return 0;
+		}
+
+		else if(_tcscmp(messageArray[0],TEXT("echo")) == 0)
+		{
+			_tprintf_s(TEXT("Message from client: "));
+			for (int i = 1; i < (int)numberOfWords; i++)
+			{
+				_tprintf_s(TEXT("%s "), messageArray[i]);
+			}
+			_tprintf_s(TEXT("\n"));
+		}
+
+		else if (_tcscmp(messageArray[0], TEXT("msg")) == 0)
+		{
+			CLIENT_DETAIL destinationClientDetail;
+			getClient(messageArray[1],&destinationClientDetail);
+			CM_SERVER_CLIENT* destinationClient = destinationClientDetail.clientHandle;
+
+			TCHAR* messageToSend = (TCHAR*)malloc(MAX_MESSAGE_SIZE * sizeof(TCHAR));
+			_tcscpy(messageToSend, TEXT("msg"));
+			for (int i = 2; i < (int)numberOfWords; i++)
+			{
+				_tcscat(messageToSend, TEXT(" "));
+				_tcscat(messageToSend, messageArray[i]);
+			}
+
+			if (initDataBuffer(&dataToSend, MAX_MESSAGE_SIZE) != ERROR_SUCCESS)
+			{
+				free(message);
+				return -1;
+			}
+
+			sendData(destinationClient, dataToSend, messageToSend);
+			DestroyDataBuffer(dataToSend);
+			free(messageToSend);
+		}
+		else
+		{
+			_tprintf_s(TEXT("Unknown command received!\n"));
 		}
 	}
 }
@@ -160,11 +287,13 @@ DWORD WINAPI ServerListener(PVOID param)
 			{
 				_tprintf_s(TEXT("Server is shutting down now...\n"));
 
+				free(clients);
 				free(command);
 				DestroyServer(server);
 				UninitCommunicationModule();
 				ThreadPoolDestroy(&threadPool);
 				_tprintf_s(TEXT("Server shut down\n"));
+				system("pause");
 				exit(0);
 			}
 		}
@@ -202,13 +331,20 @@ int _tmain(int argc, TCHAR* argv[])
 		return -1;
 	}
 
-	CreateThread(NULL, 0, ServerListener, (PVOID)server, 0, NULL);
+	//Create listener thread
+	HANDLE hListener = CreateThread(NULL, 0, ServerListener, (PVOID)server, 0, NULL);
 
 	_tprintf_s(TEXT("Server is Up & Running...\n"));
+
+	clients = (CLIENT_DETAIL*)malloc(10 * sizeof(CLIENT_DETAIL));
+	initClientsArray();
+	clientName = (TCHAR*)malloc(50 * sizeof(TCHAR));
+	_tcscpy(clientName, TEXT("UNNAMED"));
 
 	while (TRUE)
 	{
 		CM_SERVER_CLIENT* newClient = NULL;
+		//Must find a way to stop this once ready to close server
 		error = AwaitNewClient(server, &newClient);
 		if (CM_IS_ERROR(error))
 		{
@@ -221,6 +357,7 @@ int _tmain(int argc, TCHAR* argv[])
 		ThreadPoolStartNewWorker(&threadPool, ClientWorker, (PVOID)newClient);
 	}
 
+	WaitForSingleObject(hListener, INFINITE);
 	_tprintf_s(TEXT("Server is shutting down now...\n"));
 
 	DestroyServer(server);
