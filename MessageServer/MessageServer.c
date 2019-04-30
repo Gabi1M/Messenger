@@ -9,6 +9,8 @@
 
 THREAD_POOL threadPool;
 
+DWORD connectedClients = 0;
+
 DWORD sendData(CM_SERVER_CLIENT* destinationClient, CM_DATA_BUFFER* dataToSend, TCHAR* messageToSend, TCHAR* clientName)
 {
 	CM_ERROR error;
@@ -70,8 +72,31 @@ DWORD initDataBuffer(CM_DATA_BUFFER** buffer, CM_SIZE size)
 	return ERROR_SUCCESS;
 }
 
+TCHAR** splitMessage(TCHAR* message, int* numberOfWords)
+{
+	TCHAR** result = (TCHAR**)malloc(MAX_MESSAGE_SIZE * sizeof(TCHAR*));
+	for (int i = 0; i < MAX_MESSAGE_SIZE; i++)
+	{
+		result[i] = (TCHAR*)malloc(MAX_MESSAGE_SIZE * sizeof(TCHAR));
+	}
+
+	*numberOfWords = 0;
+
+	TCHAR* word = _tcstok(message, TEXT(" "));
+	while (word != NULL)
+	{
+		_tcscpy(result[*numberOfWords], word);
+		(*numberOfWords)++;
+		word = _tcstok(NULL, TEXT(" "));
+	}
+
+	return result;
+}
+
 int ClientWorker(PVOID clientParam)
 {
+	connectedClients++;
+
 	CM_SERVER_CLIENT* newClient = (CM_SERVER_CLIENT*)clientParam;
 
 	CM_DATA_BUFFER* dataToReceive = NULL;
@@ -97,9 +122,56 @@ int ClientWorker(PVOID clientParam)
 
 		DestroyDataBuffer(dataToReceive);
 
-		char* aux = malloc(MAX_MESSAGE_SIZE);
-		wcstombs(aux, message, MAX_MESSAGE_SIZE);
-		_tprintf_s(TEXT("Received message from client: %S\n"), aux);
+		int numberOfWords = 0;
+		TCHAR** messageArray = splitMessage(message,&numberOfWords);
+
+		if (_tcscmp(messageArray[0], TEXT("exit")) == 0)
+		{
+			free(message);
+			free(clientName);
+			for (int i = 0; i < MAX_MESSAGE_SIZE; i++)
+			{
+				free(messageArray[i]);
+			}
+			free(messageArray);
+			AbandonClient(newClient);
+			connectedClients--;
+			_tprintf_s(TEXT("Client disconnected!\n"));
+			return 0;
+		}
+	}
+}
+
+DWORD WINAPI ServerListener(PVOID param)
+{
+	CM_SERVER* server = (CM_SERVER*)param;
+
+	TCHAR* command = (TCHAR*)malloc(MAX_MESSAGE_SIZE * sizeof(TCHAR));
+	while (TRUE)
+	{
+		_getts_s(command, MAX_MESSAGE_SIZE);
+		if (_tcscmp(command, TEXT("exit")) == 0)
+		{
+			if (connectedClients != 0)
+			{
+				_tprintf_s(TEXT("Cannot close server! There are connected clients!\n"));
+			}
+			else
+			{
+				_tprintf_s(TEXT("Server is shutting down now...\n"));
+
+				free(command);
+				DestroyServer(server);
+				UninitCommunicationModule();
+				ThreadPoolDestroy(&threadPool);
+				_tprintf_s(TEXT("Server shut down\n"));
+				exit(0);
+			}
+		}
+		else
+		{
+			_tprintf_s(TEXT("Invalid command!\n"));
+		}
 	}
 }
 
@@ -129,6 +201,8 @@ int _tmain(int argc, TCHAR* argv[])
 		UninitCommunicationModule();
 		return -1;
 	}
+
+	CreateThread(NULL, 0, ServerListener, (PVOID)server, 0, NULL);
 
 	_tprintf_s(TEXT("Server is Up & Running...\n"));
 

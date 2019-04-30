@@ -60,6 +60,28 @@ DWORD initDataBuffer(CM_DATA_BUFFER** buffer, CM_SIZE size)
 	return ERROR_SUCCESS;
 }
 
+TCHAR** splitMessage(TCHAR* message, int* numberOfWords)
+{
+	TCHAR** result = (TCHAR * *)malloc(MAX_MESSAGE_SIZE * sizeof(TCHAR*));
+	for (int i = 0; i < MAX_MESSAGE_SIZE; i++)
+	{
+		result[i] = (TCHAR*)malloc(MAX_MESSAGE_SIZE * sizeof(TCHAR));
+	}
+
+	*numberOfWords = 0;
+
+	//int length = _tcslen(message);
+	TCHAR* word = _tcstok(message, TEXT(" "));
+	while (word != NULL)
+	{
+		_tcscpy(result[*numberOfWords], word);
+		(*numberOfWords)++;
+		word = _tcstok(NULL, TEXT(" "));
+	}
+
+	return result;
+}
+
 int _tmain(int argc, TCHAR* argv[])
 {
 	(void)argc;
@@ -103,6 +125,22 @@ int _tmain(int argc, TCHAR* argv[])
 			break;
 		}
 
+		int numberOfWords = 0;
+		TCHAR** messageArray = splitMessage(message,&numberOfWords);
+
+		if (_tcscmp(messageArray[0], TEXT("exit")) == 0)
+		{
+			free(message);
+			for (int i = 0; i < MAX_MESSAGE_SIZE; i++)
+			{
+				free(messageArray[i]);
+			}
+			free(messageArray);
+			DestroyDataBuffer(dataToSend);
+			dataToSend = NULL;
+			break;
+		}
+
 		DestroyDataBuffer(dataToSend);
 		dataToSend = NULL;
 	}
@@ -111,6 +149,9 @@ int _tmain(int argc, TCHAR* argv[])
 
 	DestroyClient(client);
 	UninitCommunicationModule();
+
+	_tprintf_s(TEXT("Client shut down!\n"));
+	system("pause");
 
 	return 0;
 }
