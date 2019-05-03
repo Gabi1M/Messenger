@@ -3,7 +3,7 @@
 // communication library
 #include "communication_api.h"
 #include "ThreadPool.h"
-#include <Windows.h>
+#include "Persistance.h"
 
 #define MAX_MESSAGE_SIZE 255
 
@@ -162,22 +162,23 @@ DWORD removeClient(TCHAR* name)
 	return ERROR_ERRORS_ENCOUNTERED;
 }
 
+BOOL isConnected(TCHAR* name)
+{
+	for (int i = 0; i < 10; i++)
+	{
+		if (_tcscmp(clients[i].clientName, name) == 0)
+		{
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
 int ClientWorker(PVOID clientParam)
 {
 	connectedClients++;
 
 	CM_SERVER_CLIENT* newClient = (CM_SERVER_CLIENT*)clientParam;
-
-	CLIENT_DETAIL clientDetail;
-	clientDetail.clientHandle = newClient;
-	clientDetail.isConnected = TRUE;
-	clientDetail.clientName = clientName;
-
-	if (addClient(clientDetail) != ERROR_SUCCESS)
-	{
-		_tprintf_s(TEXT("Failed to add client to client array!\n"));
-		return -1;
-	}
 
 	CM_DATA_BUFFER* dataToReceive = NULL;
 	CM_DATA_BUFFER* dataToSend = NULL;
@@ -241,6 +242,11 @@ int ClientWorker(PVOID clientParam)
 		else if (_tcscmp(messageArray[0], TEXT("msg")) == 0)
 		{
 			CLIENT_DETAIL destinationClientDetail;
+			if (!isConnected(messageArray[1]))
+			{
+				_tprintf_s(TEXT("Destination client not connected!\n"));
+				continue;
+			}
 			getClient(messageArray[1],&destinationClientDetail);
 			CM_SERVER_CLIENT* destinationClient = destinationClientDetail.clientHandle;
 
@@ -261,6 +267,38 @@ int ClientWorker(PVOID clientParam)
 			sendData(destinationClient, dataToSend, messageToSend);
 			DestroyDataBuffer(dataToSend);
 			free(messageToSend);
+		}
+
+		else if (_tcscmp(messageArray[0], TEXT("login")) == 0)
+		{
+			CLIENT_DETAIL clientDetail;
+			clientDetail.clientHandle = newClient;
+			clientDetail.isConnected = TRUE;
+			clientDetail.clientName = messageArray[1];
+
+			if (initDataBuffer(&dataToSend, MAX_MESSAGE_SIZE) != ERROR_SUCCESS)
+			{
+				free(message);
+				return -1;
+			}
+
+			if (addUserToFile(messageArray[1]) != ERROR_SUCCESS)
+			{
+				sendData(newClient, dataToSend, TEXT("login failed"));
+				DestroyDataBuffer(dataToSend);
+				continue;
+			}
+
+			if (addClient(clientDetail) != ERROR_SUCCESS)
+			{
+				_tprintf_s(TEXT("Failed to add client to client array!\n"));
+				sendData(newClient, dataToSend, TEXT("login failed"));
+				DestroyDataBuffer(dataToSend);
+				continue;
+			}
+
+			sendData(newClient, dataToSend, TEXT("login success"));
+			DestroyDataBuffer(dataToSend);
 		}
 		else
 		{

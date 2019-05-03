@@ -146,6 +146,19 @@ DWORD WINAPI ClientListener(PVOID param)
 			free(msg);
 		}
 
+		else if (_tcscmp(messageArray[0], TEXT("login")) == 0)
+		{
+			if (_tcscmp(messageArray[1], TEXT("success")) == 0)
+			{
+				_tprintf_s(TEXT("Login successful!\n"));
+			}
+			else
+			{
+				_tprintf_s(TEXT("Login failed!\n"));
+				_tcscpy(clientName, TEXT("UNNAMED"));
+			}
+		}
+
 		else
 		{
 			_tprintf_s(TEXT("Response from server received but it's unknown command!\n"));
@@ -242,6 +255,18 @@ int _tmain(int argc, TCHAR* argv[])
 				_tcscat(message, TEXT(" "));
 				_tcscat(message, messageArray[i]);
 			}
+			if (sendData(client, dataToSend, message) != ERROR_SUCCESS)
+			{
+				break;
+			}
+		}
+
+		else if (_tcscmp(messageArray[0], TEXT("login")) == 0)
+		{
+			_tcscat(message, TEXT(" "));
+			_tcscat(message, messageArray[1]);
+			_tcscpy(clientName, messageArray[1]);
+
 			if (sendData(client, dataToSend, message) != ERROR_SUCCESS)
 			{
 				break;

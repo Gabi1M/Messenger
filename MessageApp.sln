@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 14
-VisualStudioVersion = 14.0.25420.1
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.28803.202
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MessageClient", "MessageClient\MessageClient.vcxproj", "{4D1AE5B0-3324-4798-B6F3-C70B6B3AA4B8}"
 	ProjectSection(ProjectDependencies) = postProject
@@ -14,6 +14,11 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MessageServer", "MessageSer
 	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MessageCommunicationLib", "MessageCommunicationLib\MessageCommunicationLib.vcxproj", "{26F871BA-570A-4DB0-9A14-3657E3AF2ECA}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{FA85D53D-6FF8-480E-8A0F-64825693BA4B}"
+	ProjectSection(SolutionItems) = preProject
+		..\..\..\registration.txt = ..\..\..\registration.txt
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -50,5 +55,8 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {05584B6E-3CEE-4DAC-B296-956D48FE850F}
 	EndGlobalSection
 EndGlobal
