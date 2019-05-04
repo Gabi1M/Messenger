@@ -87,3 +87,48 @@ DWORD addUserToFile(TCHAR* username)
 	CloseHandle(hFile);
 	return ERROR_SUCCESS;
 }
+
+DWORD checkIfUserExists(TCHAR* username)
+{
+	HANDLE hFile = INVALID_HANDLE_VALUE;
+	hFile = CreateFile(TEXT("D:\\registration.txt"), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+	if (hFile == INVALID_HANDLE_VALUE && GetLastError() == ERROR_FILE_NOT_FOUND)
+	{
+		return ERROR_ERRORS_ENCOUNTERED;
+	}
+
+	TCHAR* lineRead = (TCHAR*)malloc(MAX_MESSAGE_SIZE * sizeof(TCHAR));
+	TCHAR** readArray;
+	DWORD bytesRead = 0;
+
+	while (TRUE)
+	{
+		if (ReadFile(hFile, lineRead, 30, &bytesRead, NULL) == 0)
+		{
+			CloseHandle(hFile);
+			free(lineRead);
+			return ERROR_ERRORS_ENCOUNTERED;
+		}
+
+		if (bytesRead == 0)
+		{
+			break;
+		}
+
+		DWORD numberOfWords = 0;
+		readArray = splitString(lineRead, &numberOfWords, TEXT(","));
+
+		if (_tcscmp(readArray[0], username) == 0)
+		{
+			free(lineRead);
+			free(readArray);
+			CloseHandle(hFile);
+			return ERROR_SUCCESS;
+		}
+		free(readArray);
+	}
+	free(lineRead);
+	CloseHandle(hFile);
+
+	return ERROR_NOT_FOUND;
+}

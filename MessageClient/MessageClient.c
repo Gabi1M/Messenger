@@ -152,10 +152,45 @@ DWORD WINAPI ClientListener(PVOID param)
 			{
 				_tprintf_s(TEXT("Login successful!\n"));
 			}
+			else if(_tcscmp(messageArray[1],TEXT("failed")) == 0)
+			{
+				_tprintf_s(TEXT("Login failed! Some errors were encountered!\n"));
+				_tcscpy(clientName, TEXT("UNNAMED"));
+			}
 			else
 			{
-				_tprintf_s(TEXT("Login failed!\n"));
+				_tprintf_s(TEXT("Login failed! User not found!\n"));
 				_tcscpy(clientName, TEXT("UNNAMED"));
+			}
+		}
+
+		else if (_tcscmp(messageArray[0], TEXT("register")) == 0)
+		{
+			if (_tcscmp(messageArray[1], TEXT("success")) == 0)
+			{
+				_tprintf_s(TEXT("Register successful!\n"));
+			}
+			else
+			{
+				_tprintf_s(TEXT("Register failed! Some errors were encountered!\n"));
+			}
+		}
+
+		else if (_tcscmp(messageArray[0], TEXT("client")) == 0)
+		{
+			_tprintf_s(TEXT("Connected client on server: %s\n"), messageArray[1]);
+		}
+
+		else if (_tcscmp(messageArray[0], TEXT("logout")) == 0)
+		{
+			if (_tcscmp(messageArray[1], TEXT("success")) == 0)
+			{
+				_tcscpy(clientName, TEXT("UNNAMED"));
+				_tprintf_s(TEXT("Logout successfull!\n"));
+			}
+			else
+			{
+				_tprintf_s(TEXT("Logout failed!\n"));
 			}
 		}
 
@@ -205,7 +240,8 @@ int _tmain(int argc, TCHAR* argv[])
 
 	while (TRUE)
 	{
-		//_tprintf_s(TEXT("Enter command: "));
+		Sleep(500);
+		_tprintf_s(TEXT("Enter command: "));
 		_getts_s(message, MAX_MESSAGE_SIZE);
 
 		DWORD numberOfWords = 0;
@@ -272,6 +308,35 @@ int _tmain(int argc, TCHAR* argv[])
 				break;
 			}
 		}
+
+		else if (_tcscmp(messageArray[0], TEXT("register")) == 0)
+		{
+			_tcscat(message, TEXT(" "));
+			_tcscat(message, messageArray[1]);
+
+			if (sendData(client, dataToSend, message) != ERROR_SUCCESS)
+			{
+				break;
+			}
+		}
+
+		else if (_tcscmp(messageArray[0], TEXT("client")) == 0)
+		{
+			_tprintf_s(TEXT("Connected client: %s\n"), clientName);
+			if (sendData(client, dataToSend, TEXT("client")))
+			{
+				break;
+			}
+		}
+
+		else if (_tcscmp(messageArray[0], TEXT("logout")) == 0)
+		{
+			if (sendData(client, dataToSend, TEXT("logout")) != ERROR_SUCCESS)
+			{
+				break;
+			}
+		}
+
 		else
 		{
 			_tprintf_s(TEXT("Unknown command! \n"));

@@ -282,9 +282,16 @@ int ClientWorker(PVOID clientParam)
 				return -1;
 			}
 
-			if (addUserToFile(messageArray[1]) != ERROR_SUCCESS)
+			DWORD result = (checkIfUserExists(messageArray[1]));
+			if (result == ERROR_ERRORS_ENCOUNTERED)
 			{
 				sendData(newClient, dataToSend, TEXT("login failed"));
+				DestroyDataBuffer(dataToSend);
+				continue;
+			}
+			else if (result == ERROR_NOT_FOUND)
+			{
+				sendData(newClient, dataToSend, TEXT("login notFound"));
 				DestroyDataBuffer(dataToSend);
 				continue;
 			}
@@ -298,8 +305,66 @@ int ClientWorker(PVOID clientParam)
 			}
 
 			sendData(newClient, dataToSend, TEXT("login success"));
+			_tcscpy(clientName, messageArray[1]);
 			DestroyDataBuffer(dataToSend);
 		}
+
+		else if (_tcscmp(messageArray[0], TEXT("register")) == 0)
+		{
+			if (initDataBuffer(&dataToSend, MAX_MESSAGE_SIZE) != ERROR_SUCCESS)
+			{
+				free(message);
+				return -1;
+			}
+
+			if (addUserToFile(messageArray[1]) != ERROR_SUCCESS)
+			{
+				sendData(newClient, dataToSend, TEXT("register failed"));
+				DestroyDataBuffer(dataToSend);
+				continue;
+			}
+
+			sendData(newClient, dataToSend, TEXT("register success"));
+			DestroyDataBuffer(dataToSend);
+		}
+
+		else if (_tcscmp(messageArray[0], TEXT("client")) == 0)
+		{
+			if (initDataBuffer(&dataToSend, MAX_MESSAGE_SIZE) != ERROR_SUCCESS)
+			{
+				free(message);
+				return -1;
+			}
+
+			TCHAR* messageToSend = (TCHAR*)malloc(MAX_MESSAGE_SIZE * sizeof(TCHAR));
+			_tcscpy(messageToSend, TEXT("client "));
+			_tcscat(messageToSend, clientName);
+
+			sendData(newClient, dataToSend, messageToSend);
+			DestroyDataBuffer(dataToSend);
+			free(messageToSend);
+		}
+
+		else if (_tcscmp(messageArray[0], TEXT("logout")) == 0)
+		{
+			if (initDataBuffer(&dataToSend, MAX_MESSAGE_SIZE) != ERROR_SUCCESS)
+			{
+				free(message);
+				return -1;
+			}
+
+			if (removeClient(clientName) != ERROR_SUCCESS)
+			{
+				sendData(newClient, dataToSend, TEXT("logout failed"));
+				DestroyDataBuffer(dataToSend);
+				continue;
+			}
+			_tcscpy(clientName, TEXT("UNNAMED"));
+
+			sendData(newClient, dataToSend, TEXT("logout success"));
+			DestroyDataBuffer(dataToSend);
+		}
+
 		else
 		{
 			_tprintf_s(TEXT("Unknown command received!\n"));
