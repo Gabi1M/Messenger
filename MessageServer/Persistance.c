@@ -6,9 +6,18 @@
 TCHAR** splitString(TCHAR* message, DWORD* numberOfWords, TCHAR* token)
 {
 	TCHAR** result = (TCHAR * *)malloc(MAX_MESSAGE_SIZE * sizeof(TCHAR*));
+	if (result == NULL)
+	{
+		return NULL;
+	}
+
 	for (int i = 0; i < MAX_MESSAGE_SIZE; i++)
 	{
 		result[i] = (TCHAR*)malloc(MAX_MESSAGE_SIZE * sizeof(TCHAR));
+		if (result[i] == NULL)
+		{
+			return NULL;
+		}
 	}
 
 	*numberOfWords = 0;
@@ -39,6 +48,13 @@ DWORD addUserToFile(TCHAR* username)
 
 	BOOL userExists = FALSE;
 	TCHAR* lineRead = (TCHAR*)malloc(MAX_MESSAGE_SIZE * sizeof(TCHAR));
+	if (lineRead == NULL)
+	{
+		CloseHandle(hFile);
+		hFile = INVALID_HANDLE_VALUE;
+		return (DWORD)-1;
+	}
+
 	TCHAR** readArray;
 	DWORD bytesRead = 0;
 
@@ -47,7 +63,10 @@ DWORD addUserToFile(TCHAR* username)
 		if (ReadFile(hFile, lineRead, 30, &bytesRead, NULL) == 0)
 		{
 			CloseHandle(hFile);
+			hFile = INVALID_HANDLE_VALUE;
 			free(lineRead);
+			lineRead = NULL;
+
 			return ERROR_ERRORS_ENCOUNTERED;
 		}
 
@@ -58,6 +77,14 @@ DWORD addUserToFile(TCHAR* username)
 
 		DWORD numberOfWords = 0;
 		readArray = splitString(lineRead, &numberOfWords, TEXT(","));
+		if (readArray == NULL)
+		{
+			free(lineRead);
+			lineRead = NULL;
+			CloseHandle(hFile);
+			hFile = INVALID_HANDLE_VALUE;
+			return (DWORD)-1;
+		}
 
 		if (_tcscmp(readArray[0], username) == 0)
 		{
@@ -65,8 +92,10 @@ DWORD addUserToFile(TCHAR* username)
 			break;
 		}
 		free(readArray);
+		readArray = NULL;
 	}
 	free(lineRead);
+	lineRead = NULL;
 
 	DWORD bytesWritten = 0;
 
@@ -75,16 +104,19 @@ DWORD addUserToFile(TCHAR* username)
 		if (WriteFile(hFile, username, 30, &bytesWritten, NULL) == 0)
 		{
 			CloseHandle(hFile);
+			hFile = INVALID_HANDLE_VALUE;
 			return ERROR_ERRORS_ENCOUNTERED;
 		}
 		if (bytesWritten != 30)
 		{
 			CloseHandle(hFile);
+			hFile = INVALID_HANDLE_VALUE;
 			return ERROR_ERRORS_ENCOUNTERED;
 		}
 	}
 
 	CloseHandle(hFile);
+	hFile = INVALID_HANDLE_VALUE;
 	return ERROR_SUCCESS;
 }
 
@@ -98,6 +130,13 @@ DWORD checkIfUserExists(TCHAR* username)
 	}
 
 	TCHAR* lineRead = (TCHAR*)malloc(MAX_MESSAGE_SIZE * sizeof(TCHAR));
+	if (lineRead == NULL)
+	{
+		CloseHandle(hFile);
+		hFile = INVALID_HANDLE_VALUE;
+		return (DWORD)-1;
+	}
+
 	TCHAR** readArray;
 	DWORD bytesRead = 0;
 
@@ -106,7 +145,9 @@ DWORD checkIfUserExists(TCHAR* username)
 		if (ReadFile(hFile, lineRead, 30, &bytesRead, NULL) == 0)
 		{
 			CloseHandle(hFile);
+			hFile = INVALID_HANDLE_VALUE;
 			free(lineRead);
+			lineRead = NULL;
 			return ERROR_ERRORS_ENCOUNTERED;
 		}
 
@@ -117,18 +158,32 @@ DWORD checkIfUserExists(TCHAR* username)
 
 		DWORD numberOfWords = 0;
 		readArray = splitString(lineRead, &numberOfWords, TEXT(","));
+		if (readArray == NULL)
+		{
+			CloseHandle(hFile);
+			hFile = INVALID_HANDLE_VALUE;
+			free(lineRead);
+			lineRead = NULL;
+			return (DWORD)-1;
+		}
 
 		if (_tcscmp(readArray[0], username) == 0)
 		{
 			free(lineRead);
+			lineRead = NULL;
 			free(readArray);
+			readArray = NULL;
 			CloseHandle(hFile);
+			hFile = INVALID_HANDLE_VALUE;
 			return ERROR_SUCCESS;
 		}
 		free(readArray);
+		readArray = NULL;
 	}
 	free(lineRead);
+	lineRead = NULL;
 	CloseHandle(hFile);
+	hFile = INVALID_HANDLE_VALUE;
 
 	return ERROR_NOT_FOUND;
 }

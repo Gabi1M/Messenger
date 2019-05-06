@@ -3,6 +3,7 @@
 // communication library
 #include "communication_api.h"
 #include <Windows.h>
+#include <crtdbg.h>
 
 #define MAX_MESSAGE_SIZE 255
 
@@ -43,7 +44,7 @@ DWORD receiveData(CM_CLIENT* client, CM_DATA_BUFFER* dataToReceive, TCHAR* buffe
 	error = ReceiveDataFormServer(client, dataToReceive, &receivedByteCount);
 	if (CM_IS_ERROR(error))
 	{
-		_tprintf_s(TEXT("ReceiveDataFromClient failed with err-code=0x%X!\n"), error);
+		_tprintf_s(TEXT("ReceiveDataFromServer failed with err-code=0x%X!\n"), error);
 		return ERROR_ERRORS_ENCOUNTERED;
 	}
 
@@ -86,64 +87,112 @@ TCHAR** splitMessage(TCHAR* message, DWORD* numberOfWords)
 	return result;
 }
 
-DWORD cleanDataBuffer(CM_DATA_BUFFER** buffer)
+TCHAR* concatMessage(TCHAR** messageArray, DWORD numberOfWords, DWORD startIndex)
 {
-	/*strcpy((char*)(*buffer)->DataBuffer, "");
-	(*buffer)->UsedBufferSize = 0;*/
+	TCHAR* result = (TCHAR*)malloc(MAX_MESSAGE_SIZE * sizeof(TCHAR));
+	if (result == NULL || messageArray == NULL || numberOfWords == 0)
+	{
+		return NULL;
+	}
+	_tcscpy(result, TEXT(""));
 
-	CopyDataIntoBuffer(*buffer, (CM_BYTE*)"", sizeof(""));
+	for (int i = (int)startIndex; i < (int)numberOfWords; i++)
+	{
+		_tcscat(result, messageArray[i]);
+		if (i != (int)numberOfWords - 1)
+		{
+			_tcscat(result, TEXT(" "));
+		}
+	}
 
-	return ERROR_SUCCESS;
+	return result;
+}
+
+void freeArray(TCHAR** messageArray)
+{
+	if (messageArray != NULL)
+	{
+		for (int i = 0; i < MAX_MESSAGE_SIZE; i++)
+		{
+			if (messageArray[i] != NULL)
+			{
+				free(messageArray[i]);
+				messageArray[i] = NULL;
+			}
+		}
+		free(messageArray);
+		messageArray = NULL;
+	}
+}
+
+void smallBufferhandler(const TCHAR* expression, const TCHAR* function, const TCHAR* file, unsigned int line, uintptr_t pReserved)
+{
+	UNREFERENCED_PARAMETER(expression);
+	UNREFERENCED_PARAMETER(function);
+	UNREFERENCED_PARAMETER(file);
+	UNREFERENCED_PARAMETER(line);
+	UNREFERENCED_PARAMETER(pReserved);
+	_tprintf_s(TEXT("Command too long!\nMaximum characters: 255\n"));
+	//abort();
 }
 
 DWORD WINAPI ClientListener(PVOID param)
 {
 	CM_CLIENT* client = (CM_CLIENT*)param;
 
-	TCHAR* message = (TCHAR*)malloc(MAX_MESSAGE_SIZE * sizeof(TCHAR));
-
 	CM_DATA_BUFFER* dataToReceive = NULL;
+
+	TCHAR** messageArray = NULL;
+
+	TCHAR* message = (TCHAR*)malloc(MAX_MESSAGE_SIZE * sizeof(TCHAR));
+	if (message == NULL)
+	{
+		goto cleanup;
+	}
 
 	while (TRUE)
 	{
 
 		if (initDataBuffer(&dataToReceive, MAX_MESSAGE_SIZE) != ERROR_SUCCESS)
 		{
-			return (DWORD)-1;
+			goto cleanup;
 		}
 
 		if (receiveData(client, dataToReceive, message) != ERROR_SUCCESS)
 		{
-			DestroyDataBuffer(dataToReceive);
-			return (DWORD)-1;
+			goto cleanup;
 		}
 		DestroyDataBuffer(dataToReceive);
+		dataToReceive = NULL;
 
 		DWORD numberOfWords = 0;
-		TCHAR** messageArray = splitMessage(message,&numberOfWords);
+		messageArray = splitMessage(message,&numberOfWords);
+		if (messageArray == NULL)
+		{
+			goto cleanup;
+		}
 
 		if (_tcscmp(messageArray[0], TEXT("exit")) == 0)
 		{
-			DestroyClient(client);
-			UninitCommunicationModule();
-			free(clientName);
-			free(message);
-
-			_tprintf_s(TEXT("Client shut down!\n"));
-			system("pause");
+			_tprintf_s(TEXT("Client shutting down...\n"));
+			goto cleanup;
 		}
 
 		else if(_tcscmp(messageArray[0],TEXT("msg")) == 0)
 		{
 			TCHAR* msg = (TCHAR*)malloc(MAX_MESSAGE_SIZE * sizeof(TCHAR));
-			_tcscpy(msg, TEXT(""));
-			for (int i = 1; i < (int)numberOfWords; i++)
+			if (msg == NULL)
 			{
-				_tcscat(msg, messageArray[i]);
-				_tcscat(msg, TEXT(" "));
+				goto cleanup;
 			}
-			_tprintf_s(TEXT("Message received: %s\n"), msg);
+
+			_tcscpy(msg, concatMessage(messageArray,numberOfWords,2));
+			_tprintf_s(TEXT("Message received from %s: %s\n"),messageArray[1], msg);
+
 			free(msg);
+			msg = NULL;
+
+			continue;
 		}
 
 		else if (_tcscmp(messageArray[0], TEXT("login")) == 0)
@@ -162,6 +211,7 @@ DWORD WINAPI ClientListener(PVOID param)
 				_tprintf_s(TEXT("Login failed! User not found!\n"));
 				_tcscpy(clientName, TEXT("UNNAMED"));
 			}
+			continue;
 		}
 
 		else if (_tcscmp(messageArray[0], TEXT("register")) == 0)
@@ -174,11 +224,26 @@ DWORD WINAPI ClientListener(PVOID param)
 			{
 				_tprintf_s(TEXT("Register failed! Some errors were encountered!\n"));
 			}
+			continue;
+		}
+
+		else if (_tcscmp(messageArray[0], TEXT("clients")) == 0)
+		{
+			TCHAR* concat = concatMessage(messageArray, numberOfWords, 1);
+			if (concat == NULL)
+			{
+				goto cleanup;
+			}
+			_tprintf_s(TEXT("Connected clients: %s\n"), concat);
+			free(concat);
+
+			continue;
 		}
 
 		else if (_tcscmp(messageArray[0], TEXT("client")) == 0)
 		{
 			_tprintf_s(TEXT("Connected client on server: %s\n"), messageArray[1]);
+			continue;
 		}
 
 		else if (_tcscmp(messageArray[0], TEXT("logout")) == 0)
@@ -192,13 +257,54 @@ DWORD WINAPI ClientListener(PVOID param)
 			{
 				_tprintf_s(TEXT("Logout failed!\n"));
 			}
+			continue;
 		}
 
 		else
 		{
 			_tprintf_s(TEXT("Response from server received but it's unknown command!\n"));
+			continue;
 		}
 
+	cleanup:
+		Sleep(1500);
+		if (dataToReceive != NULL)
+		{
+			DestroyDataBuffer(dataToReceive);
+			dataToReceive = NULL;
+		}
+
+		if (message != NULL)
+		{
+			free(message);
+			message = NULL;
+		}
+
+		if (messageArray != NULL)
+		{
+			for (int i = 0; i < MAX_MESSAGE_SIZE; i++)
+			{
+				if (messageArray[i] != NULL)
+				{
+					free(messageArray[i]);
+					messageArray[i] = NULL;
+				}
+			}
+			free(messageArray);
+			messageArray = NULL;
+		}
+
+		/*free(clientName);
+		clientName = NULL;*/
+
+		if (client != NULL)
+		{
+			DestroyClient(client);
+			client = NULL;
+			UninitCommunicationModule();
+		}
+
+		return 0;
 	}
 }
 
@@ -209,34 +315,48 @@ int _tmain(int argc, TCHAR* argv[])
 
 	EnableCommunicationModuleLogger();
 
-	CM_ERROR error = InitCommunicationModule();
+	CM_CLIENT* client = NULL;
+	CM_DATA_BUFFER* dataToSend = NULL;
+	TCHAR** messageArray = NULL;
+	CM_ERROR error;
+
+	TCHAR* message = (TCHAR*)malloc(MAX_MESSAGE_SIZE * sizeof(TCHAR));
+	if (message == NULL)
+	{
+		goto cleanup;
+	}
+
+	error = InitCommunicationModule();
 	if (CM_IS_ERROR(error))
 	{
 		_tprintf_s(TEXT("InitCommunicationModule failed with err-code=0x%X!\n"), error);
-		return -1;
+		goto cleanup;
 	}
 
-	CM_CLIENT* client = NULL;
 	error = CreateClientConnectionToServer(&client);
 	if (CM_IS_ERROR(error))
 	{
 		_tprintf_s(TEXT("CreateClientConnectionToServer failed with err-code=0x%X!\n"), error);
-		UninitCommunicationModule();
-		return -1;
+		goto cleanup;
 	}
 
 	_tprintf_s(TEXT("We are connected to the server...\n"));
 
 	//Create listener thread
-	CreateThread(NULL, 0, ClientListener, (PVOID)client, 0, NULL);
-
-	TCHAR* message = (TCHAR*)malloc(MAX_MESSAGE_SIZE * sizeof(TCHAR));
-
-	CM_DATA_BUFFER* dataToSend = NULL;
+	HANDLE hListener = CreateThread(NULL, 0, ClientListener, (PVOID)client, 0, NULL);
 
 	clientName = (TCHAR*)malloc(50 * sizeof(TCHAR));
+	if (clientName == NULL)
+	{
+		goto cleanup;
+	}
 	_tcscpy(clientName, TEXT("UNNAMED"));
 	_tprintf_s(TEXT("Connected client: %s\n"), clientName);
+
+	_invalid_parameter_handler oldHandler, newHandler;
+	newHandler = smallBufferhandler;
+	oldHandler = _set_invalid_parameter_handler(newHandler);
+	_CrtSetReportMode(_CRT_ASSERT, 0);
 
 	while (TRUE)
 	{
@@ -244,107 +364,239 @@ int _tmain(int argc, TCHAR* argv[])
 		_tprintf_s(TEXT("Enter command: "));
 		_getts_s(message, MAX_MESSAGE_SIZE);
 
+		if (_tcscmp(message, TEXT("")) == 0)
+		{
+			continue;
+		}
+
 		DWORD numberOfWords = 0;
-		TCHAR** messageArray = splitMessage(message,&numberOfWords);
+
+		freeArray(messageArray);
+		messageArray = splitMessage(message,&numberOfWords);
+		if (messageArray == NULL)
+		{
+			goto cleanup;
+		}
 
 		if (initDataBuffer(&dataToSend, MAX_MESSAGE_SIZE) != ERROR_SUCCESS)
 		{
-			return -1;
+			goto cleanup;
 		}
 
 		if (_tcscmp(messageArray[0], TEXT("exit")) == 0)
 		{
+			if (numberOfWords != 1)
+			{
+				_tprintf_s(TEXT("Too few arguments!\n"));
+				continue;
+			}
+
 			if (sendData(client, dataToSend, message) != ERROR_SUCCESS)
 			{
-				break;
+				goto cleanup;
 			}
-			DestroyDataBuffer(dataToSend);
-			dataToSend = NULL;
 
-			free(message);
-			for (int i = 0; i < MAX_MESSAGE_SIZE; i++)
-			{
-				free(messageArray[i]);
-			}
-			free(messageArray);
-			dataToSend = NULL;
-			break;
+			WaitForSingleObject(hListener, INFINITE);
+			goto cleanup;
 		}
 
 		else if (_tcscmp(messageArray[0], TEXT("echo")) == 0)
 		{
-			for (int i = 1; i < (int)numberOfWords; i++)
+			if (numberOfWords < 2)
 			{
-				_tcscat(message, TEXT(" "));
-				_tcscat(message, messageArray[i]);
+				_tprintf_s(TEXT("Too few arguments!\n"));
+				continue;
 			}
+
+			_tcscpy(message, concatMessage(messageArray, numberOfWords, 0));
 			if (sendData(client, dataToSend, message) != ERROR_SUCCESS)
 			{
-				break;
+				goto cleanup;
 			}
+
+			DestroyDataBuffer(dataToSend);
+			continue;
 		}
 
 		else if (_tcscmp(messageArray[0], TEXT("msg")) == 0)
 		{
-			for (int i = 1; i < (int)numberOfWords; i++)
+			if (numberOfWords < 3)
 			{
-				_tcscat(message, TEXT(" "));
-				_tcscat(message, messageArray[i]);
+				_tprintf_s(TEXT("Too few arguments!\n"));
+				continue;
 			}
+
+			if (_tcscmp(clientName, TEXT("UNNAMED")) == 0)
+			{
+				_tprintf_s(TEXT("No user logged in!\n"));
+				continue;
+			}
+
+			_tcscpy(message, concatMessage(messageArray, numberOfWords, 0));
 			if (sendData(client, dataToSend, message) != ERROR_SUCCESS)
 			{
-				break;
+				goto cleanup;
 			}
+
+			DestroyDataBuffer(dataToSend);
+			continue;
 		}
 
 		else if (_tcscmp(messageArray[0], TEXT("login")) == 0)
 		{
+			if (numberOfWords < 2)
+			{
+				_tprintf_s(TEXT("Too few arguments!\n"));
+				continue;
+			}
+
+			if (_tcscmp(clientName, TEXT("UNNAMED")) != 0)
+			{
+				_tprintf_s(TEXT("User already connected: %s\n"), clientName);
+				continue;
+			}
+
 			_tcscat(message, TEXT(" "));
 			_tcscat(message, messageArray[1]);
 			_tcscpy(clientName, messageArray[1]);
 
 			if (sendData(client, dataToSend, message) != ERROR_SUCCESS)
 			{
-				break;
+				goto cleanup;
 			}
+
+			DestroyDataBuffer(dataToSend);
+			continue;
 		}
 
 		else if (_tcscmp(messageArray[0], TEXT("register")) == 0)
 		{
+			if (numberOfWords < 2)
+			{
+				_tprintf_s(TEXT("Too few arguments!\n"));
+				continue;
+			}
+
+			if (_tcscmp(clientName, TEXT("UNNAMED")) != 0)
+			{
+				_tprintf_s(TEXT("User already connected: %s\n"), clientName);
+				continue;
+			}
+
 			_tcscat(message, TEXT(" "));
 			_tcscat(message, messageArray[1]);
 
 			if (sendData(client, dataToSend, message) != ERROR_SUCCESS)
 			{
-				break;
+				goto cleanup;
 			}
+
+			DestroyDataBuffer(dataToSend);
+			continue;
 		}
 
 		else if (_tcscmp(messageArray[0], TEXT("client")) == 0)
 		{
+			if (numberOfWords != 1)
+			{
+				_tprintf_s(TEXT("Too few arguments!\n"));
+				continue;
+			}
+
+			if (_tcscmp(clientName, TEXT("UNNAMED")) == 0)
+			{
+				_tprintf_s(TEXT("No user logged in!\n"));
+				continue;
+			}
+
 			_tprintf_s(TEXT("Connected client: %s\n"), clientName);
 			if (sendData(client, dataToSend, TEXT("client")))
 			{
-				break;
+				goto cleanup;
 			}
+
+			DestroyDataBuffer(dataToSend);
+			continue;
+		}
+
+		else if (_tcscmp(messageArray[0], TEXT("clients")) == 0)
+		{
+			if (numberOfWords != 1)
+			{
+				_tprintf_s(TEXT("Too few arguments!\n"));
+				continue;
+			}
+
+			if (_tcscmp(clientName, TEXT("UNNAMED")) == 0)
+			{
+				_tprintf_s(TEXT("No user logged in!\n"));
+				continue;
+			}
+
+			if (sendData(client, dataToSend, TEXT("clients")))
+			{
+				goto cleanup;
+			}
+
+			DestroyDataBuffer(dataToSend);
+			continue;
 		}
 
 		else if (_tcscmp(messageArray[0], TEXT("logout")) == 0)
 		{
+			if (numberOfWords != 1)
+			{
+				_tprintf_s(TEXT("Too few arguments!\n"));
+				continue;
+			}
+
+			if (_tcscmp(clientName, TEXT("UNNAMED")) == 0)
+			{
+				_tprintf_s(TEXT("No user logged in!\n"));
+				continue;
+			}
+
 			if (sendData(client, dataToSend, TEXT("logout")) != ERROR_SUCCESS)
 			{
-				break;
+				goto cleanup;
 			}
+
+			DestroyDataBuffer(dataToSend);
+			continue;
 		}
 
 		else
 		{
 			_tprintf_s(TEXT("Unknown command! \n"));
+			DestroyDataBuffer(dataToSend);
+			continue;
 		}
-		DestroyDataBuffer(dataToSend);
+
+	cleanup:
+		if (dataToSend != NULL)
+		{
+			DestroyDataBuffer(dataToSend);
+			dataToSend = NULL;
+		}
+
+		if (clientName != NULL)
+		{
+			free(clientName);
+			clientName = NULL;
+		}
+
+		if (message != NULL)
+		{
+			free(message);
+			message = NULL;
+		}
+
+		freeArray(messageArray);
+
+		break;
 	}
 
-	_tprintf_s(TEXT("Client is shutting down now...\n"));
+	_tprintf_s(TEXT("Client shut down!\n"));
 	return 0;
 }
 
