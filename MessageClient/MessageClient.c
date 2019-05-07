@@ -108,20 +108,20 @@ TCHAR* concatMessage(TCHAR** messageArray, DWORD numberOfWords, DWORD startIndex
 	return result;
 }
 
-void freeArray(TCHAR** messageArray)
+void freeArray(TCHAR*** messageArray)
 {
-	if (messageArray != NULL)
+	if ((*messageArray) != NULL)
 	{
 		for (int i = 0; i < MAX_MESSAGE_SIZE; i++)
 		{
-			if (messageArray[i] != NULL)
+			if ((*messageArray)[i] != NULL)
 			{
-				free(messageArray[i]);
-				messageArray[i] = NULL;
+				free((*messageArray)[i]);
+				(*messageArray)[i] = NULL;
 			}
 		}
-		free(messageArray);
-		messageArray = NULL;
+		free(*messageArray);
+		*messageArray = NULL;
 	}
 }
 
@@ -227,7 +227,7 @@ DWORD WINAPI ClientListener(PVOID param)
 			continue;
 		}
 
-		else if (_tcscmp(messageArray[0], TEXT("clients")) == 0)
+		else if (_tcscmp(messageArray[0], TEXT("list")) == 0)
 		{
 			TCHAR* concat = concatMessage(messageArray, numberOfWords, 1);
 			if (concat == NULL)
@@ -280,22 +280,7 @@ DWORD WINAPI ClientListener(PVOID param)
 			message = NULL;
 		}
 
-		if (messageArray != NULL)
-		{
-			for (int i = 0; i < MAX_MESSAGE_SIZE; i++)
-			{
-				if (messageArray[i] != NULL)
-				{
-					free(messageArray[i]);
-					messageArray[i] = NULL;
-				}
-			}
-			free(messageArray);
-			messageArray = NULL;
-		}
-
-		/*free(clientName);
-		clientName = NULL;*/
+		freeArray(&messageArray);
 
 		if (client != NULL)
 		{
@@ -371,7 +356,7 @@ int _tmain(int argc, TCHAR* argv[])
 
 		DWORD numberOfWords = 0;
 
-		freeArray(messageArray);
+		freeArray(&messageArray);
 		messageArray = splitMessage(message,&numberOfWords);
 		if (messageArray == NULL)
 		{
@@ -397,6 +382,7 @@ int _tmain(int argc, TCHAR* argv[])
 			}
 
 			WaitForSingleObject(hListener, INFINITE);
+			CloseHandle(hListener);
 			goto cleanup;
 		}
 
@@ -519,7 +505,7 @@ int _tmain(int argc, TCHAR* argv[])
 			continue;
 		}
 
-		else if (_tcscmp(messageArray[0], TEXT("clients")) == 0)
+		else if (_tcscmp(messageArray[0], TEXT("list")) == 0)
 		{
 			if (numberOfWords != 1)
 			{
@@ -533,7 +519,7 @@ int _tmain(int argc, TCHAR* argv[])
 				continue;
 			}
 
-			if (sendData(client, dataToSend, TEXT("clients")))
+			if (sendData(client, dataToSend, TEXT("list")))
 			{
 				goto cleanup;
 			}
@@ -591,12 +577,13 @@ int _tmain(int argc, TCHAR* argv[])
 			message = NULL;
 		}
 
-		freeArray(messageArray);
+		freeArray(&messageArray);
 
 		break;
 	}
 
 	_tprintf_s(TEXT("Client shut down!\n"));
+	_CrtDumpMemoryLeaks();
 	return 0;
 }
 

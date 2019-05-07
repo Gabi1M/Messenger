@@ -5,6 +5,8 @@
 #include "ThreadPool.h"
 #include "Persistance.h"
 
+#include <crtdbg.h>
+
 #define MAX_MESSAGE_SIZE 255
 
 typedef struct _CLIENT_DETAIL
@@ -401,14 +403,14 @@ int ClientWorker(PVOID clientParam)
 			continue;
 		}
 
-		else if (_tcscmp(messageArray[0], TEXT("clients")) == 0)
+		else if (_tcscmp(messageArray[0], TEXT("list")) == 0)
 		{
 			TCHAR* messageToSend = (TCHAR*)malloc(MAX_MESSAGE_SIZE * sizeof(TCHAR));
 			if (messageToSend == NULL)
 			{
 				goto cleanup;
 			}
-			_tcscpy(messageToSend, TEXT("clients "));
+			_tcscpy(messageToSend, TEXT("list "));
 
 			for (int i = 0; i < (int)connectedClients; i++)
 			{
@@ -533,11 +535,8 @@ DWORD WINAPI ServerListener(PVOID param)
 				command = NULL;
 				DestroyServer(server);
 				server = NULL;
-				UninitCommunicationModule();
-				ThreadPoolDestroy(&threadPool);
-				_tprintf_s(TEXT("Server shut down\n"));
-				system("pause");
-				exit(0);
+				_tprintf_s(TEXT("Server shuting down...\n"));
+				return 0;
 			}
 		}
 		else
@@ -591,21 +590,22 @@ int _tmain(int argc, TCHAR* argv[])
 		error = AwaitNewClient(server, &newClient);
 		if (CM_IS_ERROR(error))
 		{
-			_tprintf_s(TEXT("AwaitNewClient failed with err-code=0x%X!\n"), error);
-			DestroyServer(server);
-			UninitCommunicationModule();
-			return -1;
+			goto shutdown;
 		}
 
 		ThreadPoolStartNewWorker(&threadPool, ClientWorker, (PVOID)newClient);
 	}
 
-	WaitForSingleObject(hListener, INFINITE);
-	_tprintf_s(TEXT("Server is shutting down now...\n"));
+	shutdown:
 
-	DestroyServer(server);
+	WaitForSingleObject(hListener, INFINITE);
+	CloseHandle(hListener);
 	UninitCommunicationModule();
 	ThreadPoolDestroy(&threadPool);
 
+	_tprintf_s(TEXT("Server shut down!\n"));
+	system("pause");
+
+	_CrtDumpMemoryLeaks();
 	return 0;
 }
