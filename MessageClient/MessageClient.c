@@ -260,6 +260,19 @@ DWORD WINAPI ClientListener(PVOID param)
 			continue;
 		}
 
+		else if (_tcscmp(messageArray[0], TEXT("history")) == 0)
+		{
+			if (_tcscmp(messageArray[1], TEXT("noMessages")) == 0)
+			{
+				_tprintf_s(TEXT("No messages in history!\n"));
+			}
+			else
+			{
+				_tprintf_s(TEXT("H: %s\n"), concatMessage(messageArray, numberOfWords, 1));
+			}
+			continue;
+		}
+
 		else
 		{
 			_tprintf_s(TEXT("Response from server received but it's unknown command!\n"));
@@ -326,6 +339,7 @@ int _tmain(int argc, TCHAR* argv[])
 	}
 
 	_tprintf_s(TEXT("We are connected to the server...\n"));
+	_tprintf_s(TEXT("Use \"help\" to see all available commands.\n"));
 
 	//Create listener thread
 	HANDLE hListener = CreateThread(NULL, 0, ClientListener, (PVOID)client, 0, NULL);
@@ -548,6 +562,49 @@ int _tmain(int argc, TCHAR* argv[])
 			}
 
 			DestroyDataBuffer(dataToSend);
+			continue;
+		}
+
+		else if (_tcscmp(messageArray[0], TEXT("history")) == 0)
+		{
+			if (numberOfWords < 2)
+			{
+				_tprintf_s(TEXT("Too few arguments!\n"));
+				continue;
+			}
+
+			if (_tcscmp(clientName, TEXT("UNNAMED")) == 0)
+			{
+				_tprintf_s(TEXT("No user logged in!\n"));
+				continue;
+			}
+
+			_tcscat(message, TEXT(" "));
+			_tcscat(message, messageArray[1]);
+
+			if (sendData(client, dataToSend, message) != ERROR_SUCCESS)
+			{
+				goto cleanup;
+			}
+
+			DestroyDataBuffer(dataToSend);
+			continue;
+		}
+
+		else if (_tcscmp(messageArray[0], TEXT("help")) == 0)
+		{
+			_tprintf_s(TEXT("---HELP---\n"));
+			_tprintf_s(TEXT("1. echo [msg] -> transmit a message to the server.\n"));
+			_tprintf_s(TEXT("2. register [username] -> registers the user with the given username to allow it to fully use the app.\n"));
+			_tprintf_s(TEXT("3. login [username] -> logs in the user with the given username. If user not registered, operation fails.\n"));
+			_tprintf_s(TEXT("4. logout -> logs out the current user. If current user is not logged in, operation fails.\n"));
+			_tprintf_s(TEXT("5. msg [username] [msg] -> sends the message to the user with the given username. If the current user is not logged in or the destination user is not registered, the operation fails.\n"));
+			_tprintf_s(TEXT("6. client -> prints current connected user.\n"));
+			_tprintf_s(TEXT("7. list -> prints all current connected users.\n"));
+			_tprintf_s(TEXT("8. history [username] -> prints all messages sent to the user with the given username.\n"));
+			_tprintf_s(TEXT("9. help -> display this help.\n"));
+			_tprintf_s(TEXT("10. exit -> logs out the current user if connected and shuts down the client.\n"));
+
 			continue;
 		}
 

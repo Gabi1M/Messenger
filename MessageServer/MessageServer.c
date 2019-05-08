@@ -289,6 +289,11 @@ int ClientWorker(PVOID clientParam)
 			_tcscat(messageToSend, TEXT(" "));
 			_tcscat(messageToSend, concatMessage(messageArray, numberOfWords, 2));
 
+			if (addMessageToFile(clientName, messageArray[1], concatMessage(messageArray, numberOfWords, 2)) != ERROR_SUCCESS)
+			{
+				goto cleanup;
+			}
+
 			if (sendData(destinationClient, dataToSend, messageToSend) != ERROR_SUCCESS)
 			{
 				free(messageToSend);
@@ -396,6 +401,7 @@ int ClientWorker(PVOID clientParam)
 				goto cleanup;
 			}
 			DestroyDataBuffer(dataToSend);
+			dataToSend = NULL;
 
 			free(messageToSend);
 			messageToSend = NULL;
@@ -456,6 +462,81 @@ int ClientWorker(PVOID clientParam)
 			}
 			DestroyDataBuffer(dataToSend);
 			
+			continue;
+		}
+
+		else if (_tcscmp(messageArray[0], TEXT("history")) == 0)
+		{
+			DWORD messagesFound = 0;
+			TCHAR** historyResult = getMessagesFromFile(messageArray[1], 10, &messagesFound);
+
+			if (historyResult == NULL)
+			{
+				goto cleanup;
+			}
+
+			if (messagesFound == 0)
+			{
+				for (int i = 0; i < 100; i++)
+				{
+					free(historyResult[i]);
+					historyResult[i] = NULL;
+				}
+				free(historyResult);
+				historyResult = NULL;
+
+				if (sendData(newClient, dataToSend, TEXT("history noMessages")) != ERROR_SUCCESS)
+				{
+					goto cleanup;
+				}
+				continue;
+			}
+
+			TCHAR* messageEntry = (TCHAR*)malloc((MAX_MESSAGE_SIZE + _tcslen(TEXT("history "))) * sizeof(TCHAR));
+			for (int i = 0; i < (int)messagesFound; i++)
+			{
+				if (dataToSend == NULL)
+				{
+					if (initDataBuffer(&dataToSend, MAX_MESSAGE_SIZE) != ERROR_SUCCESS)
+					{
+						for (i = 0; i < 100; i++)
+						{
+							free(historyResult[i]);
+							historyResult[i] = NULL;
+						}
+						free(historyResult);
+						historyResult = NULL;
+
+						goto cleanup;
+					}
+				}
+
+				_tcscpy(messageEntry, TEXT("history "));
+				_tcscat(messageEntry, historyResult[i]);
+				if (sendData(newClient, dataToSend, messageEntry) != ERROR_SUCCESS)
+				{
+					for (i = 0; i < 100; i++)
+					{
+						free(historyResult[i]);
+						historyResult[i] = NULL;
+					}
+					free(historyResult);
+					historyResult = NULL;
+
+					goto cleanup;
+				}
+
+				DestroyDataBuffer(dataToSend);
+				dataToSend = NULL;
+			}
+
+			for (int i = 0; i < 100; i++)
+			{
+				free(historyResult[i]);
+				historyResult[i] = NULL;
+			}
+			free(historyResult);
+			historyResult = NULL;
 			continue;
 		}
 
@@ -586,7 +667,6 @@ int _tmain(int argc, TCHAR* argv[])
 	while (TRUE)
 	{
 		CM_SERVER_CLIENT* newClient = NULL;
-		//Must find a way to stop this once ready to close server
 		error = AwaitNewClient(server, &newClient);
 		if (CM_IS_ERROR(error))
 		{
