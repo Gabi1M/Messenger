@@ -13,4 +13,6 @@ The main goals for this app are:
 6. Ability to see all logged in Clients.
 7. See the message history.
 
+For now, all persistance files are saved on the D:\ drive because administrator privileges are not required to read/write them. This will break the application if you don't have a D:\ drive. I will modify this once everything else it's working normally.
+
 Everything should be functional, as well as making sure that the app doesn't crash and all errors are handled accordingly by implementing a fail safe system.
